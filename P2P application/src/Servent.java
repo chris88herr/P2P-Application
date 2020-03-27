@@ -17,7 +17,7 @@ public class Servent
 		try
 		{ 
 			socket = new Socket(address, port); 
-			System.out.println("Connected"); 
+			System.out.println("Sent connection requesto to port: " +port); 
 
 			// takes input from terminal 
 			input = new DataInputStream(System.in); 
