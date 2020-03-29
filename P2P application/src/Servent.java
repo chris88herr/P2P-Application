@@ -1,29 +1,34 @@
 // A Java program for a Client 
-import java.net.*; 
+import java.net.*;
+import java.util.Date;
 import java.io.*; 
+
+
 
 public class Servent 
 { 
-	// initialize socket and input output streams 
+	static int PORT = 1234;
+	static int UDP_PORT = 1233;
+	
+	// TCP socket 
 	private Socket socket		 = null; 
-	private DataInputStream input = null; 
-	private DataOutputStream out	 = null; 
+	
+	//UDP communication variables
+	DatagramSocket datagramSocket;
+	byte[] buffer;
+	DatagramPacket datagramPacket;
 
 	// constructor to put ip address and port 
-	@SuppressWarnings("deprecation")
 	public Servent(String address, int port) 
 	{ 
 		// establish a connection 
 		try
 		{ 
 			socket = new Socket(address, port); 
-			System.out.println("Connected to the registr"); 
-
-			// takes input from terminal 
-			input = new DataInputStream(System.in); 
-
-			// sends output to the socket 
-			out = new DataOutputStream(socket.getOutputStream()); 
+	        datagramSocket = new DatagramSocket(); 
+			System.out.println("Connected to the registry"); 
+			
+			
 		} 
 		catch(UnknownHostException u) 
 		{ 
@@ -34,38 +39,86 @@ public class Servent
 			System.out.println(i); 
 		} 
 
-		// string to read message from input 
-		String line = ""; 
 
-		// keep reading until "Over" is input 
-		while (!line.equals("Over")) 
-		{ 
-			try
-			{ 
-				line = input.readLine(); 
-				out.writeUTF(line); 
+		
+	} 
+	
+	// close the connection 
+	public void closeConnection() {
+		
+		try
+			{  
+				socket.close(); 
+				datagramSocket.close();
+				System.out.print("closed");
 			} 
-			catch(IOException i) 
+		catch(IOException i) 
 			{ 
 				System.out.println(i); 
 			} 
-		} 
+	}
+	
+	//This function creates a thread where the servent can
+	// send a hello message through the UDP port so that the 
+	//registry can receive every 60 seconds
+	public void sendHellothroughUDP() {
+		InetAddress ip;
+		try {
+			ip = InetAddress.getLocalHost();
+			String hello = "Hello from "+this.toString()+"\n";
+			buffer = new byte[1000];
+			buffer =  hello.getBytes();
+			Thread t = new Thread() {
+				@Override
+				public void run() {
+					int flag = 0;
+					while(flag <3) {
+					try {
+						
+						ByteArrayOutputStream byteStream = new ByteArrayOutputStream(5000);
+						ObjectOutputStream os = new ObjectOutputStream(new BufferedOutputStream(byteStream));
+						HelloMessage helloMsg = new HelloMessage("Hello", new Date(), socket.getLocalPort());
+						os.flush();
+						os.writeObject(helloMsg);
+						os.close();
+						
+						buffer = byteStream.toByteArray();
+						
+						datagramPacket = new DatagramPacket(buffer, buffer.length,ip,UDP_PORT);
 
-		// close the connection 
-		try
-		{ 
-			input.close(); 
-			out.close(); 
-			socket.close(); 
-		} 
-		catch(IOException i) 
-		{ 
-			System.out.println(i); 
-		} 
-	} 
+						datagramSocket.send(datagramPacket);
+
+						
+						Thread.sleep(5000);
+						flag++;
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					
+					}
+				}
+				
+			};
+			t.start();
+			
+		} catch (UnknownHostException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		
+
+
+
+	}
 
 	public static void main(String args[]) 
 	{ 
-		Servent client = new Servent("127.0.0.1", 5000); 
+		Servent client = new Servent("127.0.0.1", PORT);
+		client.sendHellothroughUDP();
+		System.out.println("out");
 	} 
 } 
