@@ -26,8 +26,7 @@ public class Servent
 		{ 
 			socket = new Socket(address, port); 
 	        datagramSocket = new DatagramSocket(); 
-			System.out.println("Connected to the registry"); 
-			
+			System.out.println("Connected to the registry: "+ socket.getPort()+"---"+socket.getLocalPort()); 
 			
 		} 
 		catch(UnknownHostException u) 
@@ -38,9 +37,6 @@ public class Servent
 		{ 
 			System.out.println(i); 
 		} 
-
-
-		
 	} 
 	
 	// close the connection 
@@ -77,7 +73,7 @@ public class Servent
 						
 						ByteArrayOutputStream byteStream = new ByteArrayOutputStream(5000);
 						ObjectOutputStream os = new ObjectOutputStream(new BufferedOutputStream(byteStream));
-						HelloMessage helloMsg = new HelloMessage("Hello", new Date(), socket.getLocalPort());
+						HelloMessage helloMsg = new HelloMessage("Hello ", new Date(), socket.getLocalPort());
 						os.flush();
 						os.writeObject(helloMsg);
 						os.close();
@@ -89,7 +85,7 @@ public class Servent
 						datagramSocket.send(datagramPacket);
 
 						
-						Thread.sleep(5000);
+						Thread.sleep(2000);
 						flag++;
 					} catch (IOException e) {
 						// TODO Auto-generated catch block
@@ -107,7 +103,7 @@ public class Servent
 			
 		} catch (UnknownHostException e1) {
 			// TODO Auto-generated catch block
-			e1.printStackTrace();
+			e1.printStackTrace(); 
 		}
 		
 

@@ -19,7 +19,7 @@ public class Registry
 	
 	static int PORT = 1234;
 	static int UDP_PORT = 1233;
-	static int TIMEOUT = 8; //timeout in seconds for UDP last contact with a client
+	static int TIMEOUT = 3; //timeout in seconds for UDP last contact with a client
 	static int IDS_AVAILABLE = 10;
 
 	//initialize socket and input stream 
@@ -58,7 +58,7 @@ public class Registry
 				receiveBytes = new byte[1000];
 				
 				datagramPacket = new DatagramPacket(receiveBytes, receiveBytes.length);
-				System.out.println("Server started:"); 
+				System.out.println("Server started: "+server); 
 
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -69,10 +69,7 @@ public class Registry
 	public ServerSocket getServerSocket() {
 		return this.server;
 	}
-	private ArrayList<Socket> getSockets() {
-		
-		return sockets;
-	}
+
 	public DatagramSocket getDatagramSocket() {
 		return datagramSocket;
 	}
@@ -89,7 +86,7 @@ public class Registry
 			registryWorkers.put(getFreshId(), rw);
 			serventEntries.put(socket, new Date());
 			sockets.add(socket);	
-			System.out.println("added! "+ serventEntries.size());
+//			System.out.println("added! "+ serventEntries.size());
 		}
 	}
 	
@@ -102,7 +99,6 @@ public class Registry
 			public void run() {
 				while(true) {
 					try {
-						System.out.println("about to receive data");
 						datagramSocket.receive(datagramPacket);
 
 						ByteArrayInputStream byteStream = new
@@ -113,8 +109,8 @@ public class Registry
 						HelloMessage hm = (HelloMessage)is.readObject();
 						
 //						String line = data(receiveBytes).toString();
-						System.out.println(hm.msg+""+hm.localport);
-						
+						System.out.println(hm.msg+" -- "+ hm.localport);
+						updateUDPTable(hm.localport, hm.date);
 						
 					} catch (IOException e) {
 						e.printStackTrace();
@@ -125,17 +121,17 @@ public class Registry
 			}
 		};
 		t.start();
-		
+		 
 		Thread checkUDPTableThread = new Thread() {
 			@Override
 			public void run() {
-				System.out.println("checking table..");
-
+				
 				while(true) {
-
-					//if(serventEntries.size()>0)
-						System.out.println("size:" +serventEntries.size());
-
+//					System.out.println("size: " +serventEntries.size());
+//					for(int i=0; i<idsAvailable.length;i++) {
+//						System.out.print(idsAvailable[i]+",");
+//					}
+//					System.out.println();
 					for(Map.Entry<Socket, Date> entry: serventEntries.entrySet()) {
 						
 						if(isLongerThan(TIMEOUT, new Date(), entry.getValue())) {
@@ -158,7 +154,14 @@ public class Registry
 	
 	
 	
-	
+	public void updateUDPTable(int port, Date date) {
+		for(Socket s : serventEntries.keySet()) {
+			if(port == s.getPort()) {
+				Date dateReplaced=null;
+				dateReplaced=serventEntries.replace(s, date);
+			}
+		}
+	}
 	public void returnIdToTable(int i) {
 		if(i>0 || i <= idsAvailable.length)
 			idsAvailable[i-1] = i;
@@ -197,19 +200,16 @@ public class Registry
 			sockets.remove(socket);
 		}
 		
-		
-		RegistryWorker rw = null;
 		for(Map.Entry<Integer, RegistryWorker> current : registryWorkers.entrySet()) {
-			if(current.getValue().serventSoccket.getLocalPort() == entry.getKey().getPort())
-				current.getValue().interrupt();
+
+			if(current.getValue().serventSoccket.getPort() == entry.getKey().getPort()) {
+				current.getValue().interuptThread();;
 				registryWorkers.remove(current.getKey());
+				returnIdToTable(current.getKey());
+			}
+				
 		}
 		
-
-		
-		
-		
-		//delete the serventEntry from iterator
 		serventEntries.remove(entry.getKey());
 	}
 	
@@ -221,7 +221,6 @@ public class Registry
 		
 		long diff = d1.getTime() - d2.getTime();
 		int diffSec =  (int) diff / 1000; // difference in seconds
-		System.out.println("differece: "+diffSec);
 		if(diffSec >= timeInSeconds)
 			return true;
 		else 
@@ -254,7 +253,6 @@ public class Registry
 		// set up UDP thread to start listening for Datagrams
 		registry.receiveDatafromUDP();
 		
-		
 		while(true) {
 			
 			try {
@@ -264,7 +262,6 @@ public class Registry
 				registry.addServent(socket);
 				
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 			

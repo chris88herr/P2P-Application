@@ -11,37 +11,44 @@ import java.util.Date;
 public class RegistryWorker extends Thread{
 	
 	public Socket serventSoccket ;
-	public Date lastContact;
+	public Date lastContact; 
 	ArrayList<Socket> sockets;	
-	private volatile boolean exit = false;
+	private volatile boolean exit = false;	
 	
 	public RegistryWorker(Socket socket, ArrayList<Socket> sockets) {
 		serventSoccket = socket;
 		lastContact = new Date();
 		this.sockets = sockets;
 	}
-	
+	 
 	@Override
 	public void run() {
 		//System.out.println("thread started... ");
 	while(!exit) {
+
 			try {
 				handleServent();
+				Thread.sleep(500);
 			}
 			catch(IOException e) {
 				e.printStackTrace();
 			
 			} catch (InterruptedException e) {
-				e.printStackTrace();
+				return;
 			}
 		}
-	System.out.println("thread has stopped");
 	
+	
+	}
+	
+	public void interuptThread() {
+		
+		exit = true;
 	}
 
 	private void handleServent() throws IOException, InterruptedException {
 			
-		
+		Thread.sleep(1000);
 	}
 
 }
