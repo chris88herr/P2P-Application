@@ -12,30 +12,28 @@ import java.io.*;
 	// class to keep track of what servents are 
 	//available on network based on their last 
 	//communication with server
-  
-
 public class Registry 
 { 
+	
 	
 	static int PORT = 1234;
 	static int UDP_PORT = 1233;
 	static int TIMEOUT = 3; //timeout in seconds for UDP last contact with a client
-	static int IDS_AVAILABLE = 10;
+	static int IDS_AVAILABLE = 3;
 
 	//initialize socket and input stream 
-	private Socket		 	socket = null; 
 	private ServerSocket 	server = null; 
 	
-	int[] idsAvailable;
+	private static int[] idsAvailable;
 	
 	private DatagramSocket datagramSocket;
 	private byte[] receiveBytes;
 	private DatagramPacket datagramPacket;
 	
-	private ConcurrentHashMap<Integer, RegistryWorker> registryWorkers;
+	private ArrayList<RegistryWorker> registryWorkers;
 	
 	//table for available servents
-	private ConcurrentHashMap<Socket, Date> serventEntries;
+	private ArrayList< ServentEntry> serventEntries;
 	private ArrayList<Socket> sockets;
 	
 
@@ -45,8 +43,8 @@ public class Registry
 	public Registry() 
 	{ 
 		sockets = new ArrayList<Socket>();
-		registryWorkers = new ConcurrentHashMap<Integer,RegistryWorker>();
-		serventEntries = new ConcurrentHashMap<Socket, Date>();
+		registryWorkers = new ArrayList<RegistryWorker>();
+		serventEntries = new ArrayList< ServentEntry>();
 		idsAvailable = new int[IDS_AVAILABLE];
 		generateIds();
 
@@ -56,44 +54,48 @@ public class Registry
 				server = new ServerSocket(PORT);
 				datagramSocket = new DatagramSocket(UDP_PORT);
 				receiveBytes = new byte[1000];
-				
 				datagramPacket = new DatagramPacket(receiveBytes, receiveBytes.length);
+				
 				System.out.println("Server started: "+server); 
 
 			} catch (IOException e) {
 				e.printStackTrace();
 			} 
 			
+		receiveDataFromUDP();
 	}
 	
-	public ServerSocket getServerSocket() {
-		return this.server;
-	}
-
-	public DatagramSocket getDatagramSocket() {
-		return datagramSocket;
-	}
-	
-
+//	public ServerSocket getServerSocket() {
+//		return this.server;
+//	}
+//
+//	public DatagramSocket getDatagramSocket() {
+//		return datagramSocket;
+//	}
 	
 	//adds a servent to the registry
 	public void addServent(Socket socket) {
-		if(!serventEntries.containsKey(socket)) {
+		
 			System.out.println("socket coming in:  "+socket);
-			//start a registryWorker
-			RegistryWorker rw = new RegistryWorker(socket, sockets);
-			rw.start();
-			registryWorkers.put(getFreshId(), rw);
-			serventEntries.put(socket, new Date());
-			sockets.add(socket);	
-//			System.out.println("added! "+ serventEntries.size());
-		}
+			OutputStream out;
+			InputStream in ;
+			try {
+				int id  = getFreshId();
+				out = socket.getOutputStream();
+				in = socket.getInputStream();
+				RegistryWorker rw = new RegistryWorker(id,this, socket, sockets, out, in);
+				rw.start();
+				registryWorkers.add(rw);
+				sockets.add(socket);	
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		
 	}
-	
 	
 	//spawns a new thread to listen to the UDP port for messages from
 	//all servents connected to our server
-	public void receiveDatafromUDP() {
+	public void receiveDataFromUDP() {
 		Thread t = new Thread() {
 			@Override
 			public void run() {
@@ -109,7 +111,7 @@ public class Registry
 						HelloMessage hm = (HelloMessage)is.readObject();
 						
 //						String line = data(receiveBytes).toString();
-						System.out.println(hm.msg+" -- "+ hm.localport);
+						//System.out.println(hm.msg+" -- "+ hm.localport);
 						updateUDPTable(hm.localport, hm.date);
 						
 					} catch (IOException e) {
@@ -127,20 +129,16 @@ public class Registry
 			public void run() {
 				
 				while(true) {
-//					System.out.println("size: " +serventEntries.size());
-//					for(int i=0; i<idsAvailable.length;i++) {
-//						System.out.print(idsAvailable[i]+",");
-//					}
-//					System.out.println();
-					for(Map.Entry<Socket, Date> entry: serventEntries.entrySet()) {
+					for(RegistryWorker rw: registryWorkers) {
 						
-						if(isLongerThan(TIMEOUT, new Date(), entry.getValue())) {
-							deleteEntry(entry);
+						if(isLongerThan(TIMEOUT, new Date(), rw.getServentEntry().getDate())) {
+							System.out.println("deleting: "+rw.getServentEntry().getPort());
+							rw.closeConnectionWithServent();
 						}
 					}
 					
 					try {
-						Thread.sleep(2000);
+						Thread.sleep(5000);
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
@@ -151,18 +149,18 @@ public class Registry
 		checkUDPTableThread.start();
 		
 	}
-	
-	
+	 
 	
 	public void updateUDPTable(int port, Date date) {
-		for(Socket s : serventEntries.keySet()) {
+		
+		for(ServentEntry s : serventEntries) {
 			if(port == s.getPort()) {
-				Date dateReplaced=null;
-				dateReplaced=serventEntries.replace(s, date);
+				s.changeDate(date);
 			}
 		}
 	}
-	public void returnIdToTable(int i) {
+	
+	public  void returnIdToTable(int i) {
 		if(i>0 || i <= idsAvailable.length)
 			idsAvailable[i-1] = i;
 		else
@@ -188,33 +186,42 @@ public class Registry
 		}
 	}
 	
-	public void deleteEntry( Map.Entry<Socket, Date> entry) {
-		//delete socket from list
-		Socket socket = null;
-		for(Socket s : sockets) {
-			if (s.getLocalPort() == entry.getKey().getPort())
-				socket = s;
-				
-		}
-		if(socket!=null) {
-			sockets.remove(socket);
-		}
-		
-		for(Map.Entry<Integer, RegistryWorker> current : registryWorkers.entrySet()) {
+	public String searchTableForFile(String fileLookedUp) {
+		for(ServentEntry entry : serventEntries ){
+			for(String file : entry.getFiles()) {
+				//System.out.println("looking  |"+file+"|  |"+fileLookedUp+"| ---"+(fileLookedUp.equals(file)));
 
-			if(current.getValue().serventSoccket.getPort() == entry.getKey().getPort()) {
-				current.getValue().interuptThread();;
-				registryWorkers.remove(current.getKey());
-				returnIdToTable(current.getKey());
+				if(fileLookedUp.equals(file))
+				{
+					return entry.getRemoteAddress();
+				}
 			}
-				
-		}
 		
-		serventEntries.remove(entry.getKey());
+		}
+		return "FILE NOT FOUND ON REGISTRY";
 	}
 	
-	//helper function to check for a ServentEntry
+	
+	public void deleteServentEntryFromList(ServentEntry serventEntry)
+	{
+		System.out.println("before deleting entries... "+serventEntries.size());
+		serventEntries.remove(serventEntry);
+		System.out.println("after deleting entries... "+serventEntries.size());
 
+	}
+	
+	public void addServentEntry(ServentEntry serventEntry) {
+
+		serventEntries.add( serventEntry);
+	}
+	
+	public void removeRegistryWorkerFromList(RegistryWorker registryWroker) {
+		System.out.println("before deleting workers... "+registryWorkers.size());
+		registryWorkers.remove(registryWroker);
+		
+		System.out.println("after deleting wrokers... "+registryWorkers.size());
+
+	}
 	
 	//function to use for timeouts in communications over UDP
 	public boolean isLongerThan(int timeInSeconds, Date d1, Date d2) {
@@ -241,25 +248,51 @@ public class Registry
 	        } 
 	        return ret; 
 	    } 
-
 	
+	public void runReport() {
+		Thread t = new Thread() {
+			@Override
+			public void run() {
+				while(true) {
+					if(registryWorkers.size()==0) 
+						System.out.println("no workers");
+					else {
+						System.out.println("workers: "+registryWorkers.size());
+						for(RegistryWorker rw : registryWorkers){
+							rw.printSockets();
+							System.out.println("is alive?"+rw.isAlive());
+						}
+					}
+					
+					try {
+						Thread.sleep(1500);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+		};
+		t.start();
+	}
+
+	private void acceptConnection() throws IOException {
+		addServent( server.accept());
+	}
 	//server driver
 	public static void main(String args[]) 
-	{ 
-		
+	{
 		//start server
-		Registry registry = new Registry();
+		Registry registry = new Registry();		
 		
-		// set up UDP thread to start listening for Datagrams
-		registry.receiveDatafromUDP();
+//		registry.runReport();
 		
 		while(true) {
 			
 			try {
 				//listen for more connections
 				System.out.println("waitng for connection...");
-				Socket socket = registry.getServerSocket().accept();
-				registry.addServent(socket);
+				registry.acceptConnection();
 				
 			} catch (IOException e) {
 				e.printStackTrace();
