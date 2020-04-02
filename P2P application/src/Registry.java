@@ -16,7 +16,7 @@ public class Registry
 { 
 	
 	
-	static int PORT = 1234;
+	static int REGISTRY_PORT = 1234;
 	static int UDP_PORT = 1233;
 	static int TIMEOUT = 3; //timeout in seconds for UDP last contact with a client
 	static int IDS_AVAILABLE = 3;
@@ -51,7 +51,7 @@ public class Registry
 			try {
 				
 				//bind the sockets to the ports to establish communication
-				server = new ServerSocket(PORT);
+				server = new ServerSocket(REGISTRY_PORT);
 				datagramSocket = new DatagramSocket(UDP_PORT);
 				receiveBytes = new byte[1000];
 				datagramPacket = new DatagramPacket(receiveBytes, receiveBytes.length);

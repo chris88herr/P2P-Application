@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ public class RegistryWorker extends Thread{
 	public static final String STATUS_CONNECTION_CLOSED = "CLOSED_CONNECTION";
 	public static final String CLOSE_REGISTRY_CONNECTION = "Close_Registry_Connection";
 	public static final String SENDING_FILE = "SENDING_FILE";
+	public static final String GET_FILE = "GET_FILE";
 
 	
 	public Socket serventSocket ;
@@ -52,12 +54,24 @@ public class RegistryWorker extends Thread{
 		this.sockets = sockets;
 		this.registry = registry;
 		registryWorkerId = id;
-		serventEntry = new ServentEntry(new Date(), serventSocket, getFilesFromServent());
+		ArrayList<String> files = getFilesFromServent();
+		String serventServerAddress = getServentAddress();
+		serventEntry = new ServentEntry(new Date(), serventSocket, files,serventServerAddress );
 		registry.addServentEntry(serventEntry);
 	}
 	
 	public ServentEntry getServentEntry() {
 		return this.serventEntry;
+	}
+	
+	public String getServentAddress() {
+		try {
+			return (String) in.readObject();
+		} catch (ClassNotFoundException | IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return null;
 	}
 	 
 	@Override
@@ -148,7 +162,7 @@ public class RegistryWorker extends Thread{
 			commandParam = (String) in.readObject();
 			System.out.println(commandParam);
 			String[] params = commandParam.split(":");
-			System.out.println("params length"+params.length);
+			System.out.println("params length "+params.length);
 			
 			if(params!=null&&params.length>0) {
 				switch(params[0]) {
@@ -160,8 +174,9 @@ public class RegistryWorker extends Thread{
 					System.out.println("getting to close..");
 					closeConnectionWithServent();
 					break;
-				case SENDING_FILE:
-					receiveFile(params[1]);
+				case GET_FILE:
+					sendFileOwnerInfo(params[1]);
+					break;
 				default:
 					System.out.println("not a valid command from servent");
 					break;
@@ -178,13 +193,14 @@ public class RegistryWorker extends Thread{
 		
 	}
 	
-	public void receiveFile(String fileName) {
+	//registry sends the servant's address information to get the file 
+	//directly from that address.
+	public void sendFileOwnerInfo(String fileName) {
+		String info = registry.searchTableForFile(fileName);
 		try {
-			byte[] fileContent = (byte[]) in.readObject();
-			File savedFile = new File("bitcoin2.pdf");
-			Files.write(savedFile.toPath(), fileContent);
-		} catch (ClassNotFoundException | IOException e) {
-			// TODO Auto-generated catch block
+			out.writeObject(info);
+			System.out.println("sent info "+info );
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		

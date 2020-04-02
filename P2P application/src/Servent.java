@@ -15,18 +15,21 @@ import java.io.*;
 
 public class Servent 
 { 
-	static int PORT = 1234;
+	static int REGISTRY_PORT = 1234;
 	static int UDP_PORT = 1233;
+
 	static int UDP_MESSAGE_INTERVAL = 1000; //milliseconds
 	static String SEARCHCOMMAND = "search";
 	static String CLOSE_REGISTRY_CONNECTION = "Close_Registry_Connection";
 	static String STATUS_CONNECTION_CLOSED = "CLOSED_CONNECTION";
 	public static final String SENDING_FILE = "SENDING_FILE";
-
+	public static final String FILE_SAVED = "FILE_SAVED";
+	public static final String GET_FILE = "GET_FILE";
+	public static final String LOCAL_HOST_ADDRESS ="127.0.0.1";
 	
 	// TCP socket 
 	private Socket socket;
-	public ObjectOutputStream out;
+	public  ObjectOutputStream out;
 	public ObjectInputStream in;
 	
 	//UDP communication variables
@@ -35,9 +38,9 @@ public class Servent
 	DatagramPacket datagramPacket;
 	
 	private static ArrayList<String> files;
-	
 	Thread helloThread;
 	
+	private ServerSocket serverSocket;
 
 	// constructor to put ip address and port 
 	public Servent(String address, int port) 
@@ -46,14 +49,22 @@ public class Servent
 		try
 		{ 
 			socket = new Socket(address, port);
+			System.out.println("Connected 1 "+ socket); 
+
+			serverSocket = new ServerSocket(0);
+			System.out.println("Connected 2:"+serverSocket.getLocalPort()); 
+			System.out.println("host: "+serverSocket.getLocalSocketAddress()); 
+
+
+			
 			out = new ObjectOutputStream(socket.getOutputStream());
 			in = new ObjectInputStream(socket.getInputStream());
-			
 
 			//send the files
 			
 	        datagramSocket = new DatagramSocket(); 
 	        helloThread = publish();
+	        sendFile();
 			System.out.println("Connected to the registry: "+ socket.getRemoteSocketAddress().toString()+"---"+socket.getPort()); 
 			
 		} 
@@ -67,6 +78,10 @@ public class Servent
 		} 
 	} 
 	
+	public int getServerSocket() {
+		return serverSocket.getLocalPort();
+	}
+	
 	//sends files to socket connected to. Starts transmitting
 	//messages through UDP as required to stay on its registry table
 	//of servants. Messages are sent on an interval specified in UDP_MESSAGE_INTERVAL
@@ -76,6 +91,7 @@ public class Servent
 			try {
 				System.out.println("publishing...");
 				out.writeObject(getFiles());
+				out.writeObject(serverSocket.getLocalSocketAddress().toString());
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -231,7 +247,7 @@ public class Servent
 			Scanner in = new Scanner(System.in);
 			String input = in.nextLine();
 			String[] params =  input.split(" ");
-			System.out.println("params." + params[0]);
+			//System.out.println("params: " + params[0]);
 
 			if(params!=null&&params.length==2) {
 				
@@ -242,8 +258,9 @@ public class Servent
 				case "close":
 					closeConnectionWithRegistry();
 					break;
-				case "send":
-					sendFile(params[1]);
+				case "fetch":
+					getFileFromPeer(params[1]);
+					break;
 				default:
 					System.out.println("not a valid command and/or params." + params[0]);
 					break;
@@ -256,29 +273,83 @@ public class Servent
 		}
 	}
 	
-	public void sendFile(String filNamme) {
-		
-		String test = "bitcoin.pdf";
-		byte[] content;
+	public void getFileFromPeer(String filename) {
 		try {
-			out.writeObject(new String(SENDING_FILE+":"+test));
-			
-			File file = new File(test);
-			content = Files.readAllBytes(file.toPath());
-			out.writeObject(content);
-			System.out.println("sent file contents over network.");
+			out.writeObject(new String(GET_FILE+":"+filename));
+			String[] params = ( (String) in.readObject()).split(":");
+			System.out.println("got info" + params[0]+params[1]);
+
+			if(params.length==2) {
+				String address = params[0];
+				int port = Integer.parseInt(params[1]);
+				receiveFile(address, port, filename);
+			}
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		}
+	}
+	
+	
+	public void sendFile() {
+		Thread fileSendingThread = new Thread() {
+			@Override
+			public void run() {
+				
+				Socket toSocket;
+				byte[] content;
+				while(true) {
+					System.out.println("LOOOP STARTED");
+
+					try {
+						System.out.println("LOOOP STARTED");
+
+						toSocket =  serverSocket.accept();
+						System.out.println("LOOOP STARTED 3");
+
+						ObjectOutputStream out = new ObjectOutputStream(toSocket.getOutputStream());
+						ObjectInputStream in = new ObjectInputStream(toSocket.getInputStream());
+						System.out.println("LOOOP STARTED 4");
+
+						String fileName = (String)in.readObject();
+						System.out.println("about to send:"+fileName);
+						File file = new File(fileName);
+						content = Files.readAllBytes(file.toPath());
+						out.writeObject(content);
+						System.out.println("sent file contents over network.");
+						
+						toSocket.close();
+					} catch (IOException | ClassNotFoundException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+		};
+		fileSendingThread.start();
 		
 	}
 	
-	public void receiveFile() {
+	public void receiveFile(String peerAddress, int peerPort, String filename) {
+		System.out.println("receiving file 1");
+
 		try {
-			byte[] fileContent = (byte[]) in.readObject();
-			File savedFile = new File("bitcoin2.pdf");
-			Files.write(savedFile.toPath(), fileContent);
+			System.out.println("receiving file 2");
+
+			Socket receiveFileSocket = new Socket(LOCAL_HOST_ADDRESS, peerPort);
+			System.out.println("receiving file 3");
+
+			ObjectOutputStream socketOut = new ObjectOutputStream(receiveFileSocket.getOutputStream());
+			ObjectInputStream socketIn = new ObjectInputStream(receiveFileSocket.getInputStream());
+			
+			socketOut.writeObject(filename);
+			System.out.println("receiving file 4");
+
+				byte[] fileContent = (byte[]) socketIn.readObject();
+				File fileToSave = new File(filename);
+				Files.write(fileToSave.toPath(), fileContent);
+
 		} catch (ClassNotFoundException | IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -288,7 +359,7 @@ public class Servent
 	
 	public static void main(String args[]) 
 	{ 
-		Servent client = new Servent("127.0.0.1", PORT);	
+		Servent client = new Servent(LOCAL_HOST_ADDRESS, REGISTRY_PORT);	
 
 		try {
 		client.handleUserInput();

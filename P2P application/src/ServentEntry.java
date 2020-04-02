@@ -7,11 +7,13 @@ class ServentEntry{
 	private Date date; 
 	private Socket socket;
 	private ArrayList<String> serventFiles;
+	private String serverAddress;
 
-	public ServentEntry( Date d, Socket s, ArrayList<String> files) {
+	public ServentEntry( Date d, Socket s, ArrayList<String> files, String serverAddress) {
 		  date = d ;
 		  socket = s;
 		  serventFiles = new ArrayList<String>(files);
+		  this.serverAddress=serverAddress;
 	  }
 	
 	public int getPort() {
@@ -19,7 +21,7 @@ class ServentEntry{
 	}
 	
 	public String getRemoteAddress() {
-		return socket.getRemoteSocketAddress().toString();
+		return serverAddress;
 	}
 	
 	public Date getDate() {
